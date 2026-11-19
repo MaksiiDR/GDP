@@ -3,9 +3,10 @@
  * Funciones puras (sin APIs de Google) para poder probarlas fuera de Apps Script.
  */
 
-var PALABRAS_INGRESO = /(recibiste|te transfiri[oó]|abono|dep[oó]sito recibido|transferencia recibida|has recibido|te han transferido|devoluci[oó]n)/i;
+var PALABRAS_INGRESO = /(recibiste|te transfiri[oó]|abono|dep[oó]sito recibido|transferencia recibida|has recibido|te han transferido|devoluci[oó]n|anulaci[oó]n)/i;
 var PALABRAS_MONTO = /(compra|monto|cargo|por un total|total|pago|transferencia|transferiste|giro|abono|recibiste|valor|importe|por)\W{0,25}$/i;
 var PALABRAS_NO_MONTO = /(cupo|disponible|saldo|l[ií]mite|deuda total|utilizado)\W{0,30}$/i;
+var PALABRAS_IGNORAR = /(comprobante\s+(?:de\s+)?pago\s+(?:de\s+)?tarjeta\s+de\s+cr[eé]dito|pago\s+de\s+tu\s+tarjeta\s+de\s+cr[eé]dito)/i;
 
 function normalizarTexto_(texto) {
   var acentos = { a: 'á', e: 'é', i: 'í', o: 'ó', u: 'ú', A: 'Á', E: 'É', I: 'Í', O: 'Ó', U: 'Ú' };
@@ -22,6 +23,7 @@ function normalizarTexto_(texto) {
     .replace(/&([aeiouAEIOU])acute;/g, function (_, v) { return acentos[v]; })
     .replace(/&ntilde;/g, 'ñ').replace(/&Ntilde;/g, 'Ñ')
     .replace(/[ \t]*\r?\n[ \t]*/g, ' ')
+    .replace(/[ \t]{2,}\*/g, ' *')
     // 3+ espacios seguidos separan campos (ej: "NETFLIX.COM.     LAS CONDES     CL")
     .replace(/[ \t]{3,}/g, ' | ')
     .replace(/\s+/g, ' ')
@@ -68,14 +70,14 @@ function limpiarComercio_(s) {
 function buscarComercio_(t) {
   var patrones = [
     /([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ]+(?: [A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ]+){0,3}) te (?:ha )?transfiri/,
-    /comercio\s*[:|]?\s*(.+?)(?=\s+(?:fecha|monto|hora|tarjeta|cuotas|el \d)|\s*[|;]|$)/i,
-    /destinatario\s*:?\s*(.+?)(?=\s+(?:rut|banco|cuenta|monto|fecha)|\s*[|;]|$)/i,
+    /\bcomercio\s*[:|]\s*(.+?)(?=\s+(?:fecha|monto|hora|tarjeta|cuotas|el \d)|\s*[|;]|$)/i,
+    /\bdestinatario\s*[:|]\s*(.+?)(?=\s+(?:rut|banco|cuenta|monto|fecha)|\s*[|;]|$)/i,
     /\ben\s+([A-Z0-9][A-Z0-9*.&'\/ -]{2,40}?)(?=\s+(?:el|con|a las|fecha|por)\b|\s*[.,;|]|\s+\d{1,2}[\/-])/,
     /\ben\s+(?:el comercio\s+)?([^.,;|]{3,40}?)(?=\s+(?:el|con|a las|fecha)\b|\s*[.,;|])/i
   ];
   for (var i = 0; i < patrones.length; i++) {
     var m = t.match(patrones[i]);
-    if (m && m[1] && !/^(tu|su|la|el|una?)\b/i.test(m[1]) && !/tarjeta|cuenta/i.test(m[1])) {
+    if (m && m[1] && !/^(tu|su|la|el|una?|nacional|internacional|comercio\s+(?:nacional|internacional))\b/i.test(m[1]) && !/tarjeta|cuenta/i.test(m[1])) {
       return limpiarComercio_(m[1]);
     }
   }
@@ -93,15 +95,54 @@ function buscarFecha_(t, respaldo) {
   return r.toISOString();
 }
 
+var ALIAS_COMERCIO = [
+  [/merpago\*universi/i, 'Casino / Cafetería U'],
+  [/fredy\s+octavio/i, 'Negocio (Fredy Octavio)'],
+  [/panader[ií]a/i, 'Panadería'],
+  [/santa\s+emilia/i, 'Santa Emilia'],
+  [/unimarc|supermercado\s+uni/i, 'Unimarc'],
+  [/\bsanto\s+domingo\b/i, 'Santo Domingo'],
+  [/santa\s+isabel|\bsta\.?\s+isabel\b/i, 'Santa Isabel'],
+  [/\balvi\b/i, 'Alvi'],
+  [/pasajebus/i, 'PasajeBus'],
+  [/pullman\s*bus/i, 'Pullman Bus'],
+  [/146\s+terminal\s+tb|turbus/i, 'Terminal Turbus'],
+  [/872\s+biobio\s+termi|biobio\s+termi/i, 'Terminal Biobío'],
+  [/boletos\.la/i, 'Boletos.la'],
+  [/\brecorrido\b/i, 'Recorrido'],
+  [/uber\s*eat/i, 'Uber Eats'],
+  [/\buber\b/i, 'Uber'],
+  [/pedidos\s*ya/i, 'PedidosYa'],
+  [/netflix/i, 'Netflix'],
+  [/\bentel\b/i, 'Entel'],
+  [/google\s+one/i, 'Google One'],
+  [/anthropic|claude/i, 'Claude'],
+  [/\bcanva\b/i, 'Canva'],
+  [/webdock/i, 'Webdock'],
+  [/falabella/i, 'Falabella'],
+  [/mercado\s*libre/i, 'Mercado Libre'],
+  [/merpago\*caferoca/i, 'Café Roca'],
+  [/merpago\*cafeteri/i, 'Cafetería'],
+  [/acaiberry/i, 'Açaí Berry'],
+  [/\bairbnb\b/i, 'Airbnb']
+];
+
+function aplicarAliasComercio_(s) {
+  for (var i = 0; i < ALIAS_COMERCIO.length; i++) {
+    if (ALIAS_COMERCIO[i][0].test(s)) return ALIAS_COMERCIO[i][1];
+  }
+  return s;
+}
+
 var REGLAS_CATEGORIA = [
-  ['Supermercado', /lider|jumbo|unimarc|tottus|santa isabel|acuenta|ekono|mayorista|alvi|super/i],
-  ['Comida', /rappi|pedidos ?ya|uber ?eats|just ?eat|mcdonald|burger|kfc|starbucks|domino|papa john|sushi|restaurant|cafe|caf[eé]|pizza|telepizza|juan maestro|doggis/i],
-  ['Transporte', /uber|didi|cabify|metro|bip|copec|shell|petrobras|aramco|enex|estacionamiento|autopista|tag|turbus|pullman|latam|sky airline|jetsmart/i],
-  ['Suscripciones', /netflix|spotify|disney|hbo|max\b|prime video|amazon prime|youtube|apple\.com|icloud|google|openai|chatgpt|claude|anthropic|xbox|playstation|steam/i],
+  ['Supermercado', /lider|jumbo|unimarc|tottus|santa isabel|sta\.?\s*isabel|acuenta|ekono|mayorista|alvi|super|fredy octavio/i],
+  ['Comida', /rappi|pedidos ?ya|uber ?eat|just ?eat|mcdonald|burger|kfc|starbucks|domino|papa john|sushi|restaurant|cafe|caf[eé]|pizza|telepizza|juan maestro|doggis|casino|panader[ií]a|a[cç]a[ií] ?berry|acaiberry/i],
+  ['Transporte', /uber|didi|cabify|metro|bip|copec|shell|petrobras|aramco|enex|estacionamiento|autopista|tag|turbus|pullman|latam|sky airline|jetsmart|pasajebus|boletos\.la|recorrido|terminal biob[ií]o|biobio termi/i],
+  ['Suscripciones', /netflix|spotify|disney|hbo|max\b|prime video|amazon prime|youtube|apple\.com|icloud|google|openai|chatgpt|claude|anthropic|xbox|playstation|steam|canva|webdock/i],
   ['Salud', /farmacia|cruz verde|salcobrand|ahumada|dr\.? simi|cl[ií]nica|isapre|fonasa|dental|m[eé]dico/i],
   ['Cuentas y servicios', /enel|cge|aguas|essbio|esval|metrogas|abastible|lipigas|gasco|entel|movistar|claro|wom|vtr|mundo|gtd/i],
   ['Compras', /falabella|paris|ripley|hites|la polar|mercado ?libre|aliexpress|amazon|shein|temu|sodimac|easy|ikea|h&m|zara/i],
-  ['Ocio', /cine|cinemark|hoyts|ticket|punto ticket|passline|bar\b|pub\b/i]
+  ['Ocio', /cine|cinemark|hoyts|ticket|punto ticket|passline|bar\b|pub\b|santa emilia|santo domingo|airbnb/i]
 ];
 
 function categoriaSugerida_(comercio, movimientosPrevios) {
@@ -122,13 +163,15 @@ function categoriaSugerida_(comercio, movimientosPrevios) {
 /** Devuelve {monto, ultimos4, comercio, fecha, esIngreso} o null si no parece un cargo. */
 function parsearCorreo_(texto, fechaCorreo) {
   var t = normalizarTexto_(texto);
+  if (PALABRAS_IGNORAR.test(t)) return null;
   var monto = buscarMonto_(t);
   if (!monto) return null;
   var esIngreso = PALABRAS_INGRESO.test(t);
+  var comercio = buscarComercio_(t);
   return {
     monto: esIngreso ? monto : -monto,
     ultimos4: buscarTarjeta_(t),
-    comercio: buscarComercio_(t) || (esIngreso ? 'Ingreso' : 'Cargo sin nombre'),
+    comercio: comercio ? aplicarAliasComercio_(comercio) : (esIngreso ? 'Ingreso' : 'Cargo sin nombre'),
     fecha: buscarFecha_(t, fechaCorreo),
     esIngreso: esIngreso
   };

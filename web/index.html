@@ -174,7 +174,7 @@ nav.tabs .in{max-width:560px;margin:0 auto;display:grid;grid-template-columns:1f
 /* Hoja (formulario) */
 dialog{border:0;padding:0;background:transparent;max-width:none;max-height:none;width:100%;height:100%;color:var(--ink)}
 dialog::backdrop{background:rgba(20,18,12,.42)}
-.hoja{position:absolute;left:0;right:0;bottom:0;margin:0 auto;max-width:560px;background:var(--surface);border-radius:22px 22px 0 0;padding:10px 18px calc(18px + env(safe-area-inset-bottom));max-height:92vh;overflow-y:auto;animation:sube .32s cubic-bezier(.16,1,.3,1)}
+.hoja{position:absolute;left:0;right:0;bottom:0;margin:0 auto;max-width:560px;background:var(--surface);border-radius:22px 22px 0 0;padding:10px 18px calc(18px + env(safe-area-inset-bottom));max-height:92vh;max-height:92dvh;overflow-y:auto;animation:sube .32s cubic-bezier(.16,1,.3,1)}
 @keyframes sube{from{transform:translateY(40px);opacity:.4}}
 @media (min-width:700px){.hoja{bottom:auto;top:50%;transform:translateY(-50%);border-radius:22px;animation:none;padding-bottom:18px}}
 .asa{width:38px;height:5px;border-radius:3px;background:var(--line);margin:0 auto 12px}
@@ -188,12 +188,16 @@ dialog::backdrop{background:rgba(20,18,12,.42)}
 .campo>span{display:block;font-size:13px;font-weight:500;color:var(--ink-2);margin-bottom:6px}
 .campo input,.campo select,.campo textarea{width:100%;height:46px;border:1px solid var(--line);border-radius:12px;background:var(--bg);padding:0 14px;font-size:16px;appearance:none;-webkit-appearance:none}
 .campo select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none' stroke='%237A766C' stroke-width='1.8'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:36px}
-.campo textarea{height:150px;padding:12px 14px;resize:vertical;font-size:14px;line-height:1.4}
+.campo textarea{height:150px;padding:12px 14px;resize:vertical;font-size:16px;line-height:1.4}
 .campo input:focus,.campo select:focus,.campo textarea:focus{outline:none;border-color:var(--libre);box-shadow:0 0 0 3px color-mix(in srgb,var(--libre) 20%,transparent)}
 .campo input::placeholder,.campo textarea::placeholder{color:var(--ink-3)}
-.campo.dinero input{font:700 30px/1 var(--display);height:60px;letter-spacing:-.02em}
+.dinero-in{display:flex;align-items:center;gap:4px;height:60px;border:1px solid var(--line);border-radius:12px;background:var(--bg);padding:0 14px}
+.dinero-in:focus-within{border-color:var(--libre);box-shadow:0 0 0 3px color-mix(in srgb,var(--libre) 20%,transparent)}
+.dinero-in span{font:700 28px/1 var(--display);color:var(--ink-3);user-select:none}
+.campo.dinero .dinero-in input{border:0;background:transparent;height:100%;padding:0;box-shadow:none;font:700 30px/1 var(--display);letter-spacing:-.02em;min-width:0}
+.campo .monto-vista{color:var(--libre);font-weight:600;margin-top:5px}
 .campo small{display:block;font-size:12.5px;color:var(--ink-3);margin-top:6px}
-.dos{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.dos{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
 .colores{display:flex;gap:10px}
 .colores button{width:32px;height:32px;border-radius:9px;border:2px solid transparent;outline:2px solid transparent;outline-offset:-6px}
 .colores button.on{border-color:var(--surface);outline:2px solid var(--ink);outline-offset:0}
@@ -270,11 +274,13 @@ var BANCOS = ['BancoEstado','Banco de Chile','Santander','BCI','Itaú','Scotiaba
 var NO_GASTO = {Transferencia:1, Ajuste:1, Ingreso:1};
 
 var fmt = new Intl.NumberFormat('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0});
+var fmtNum = new Intl.NumberFormat('es-CL',{maximumFractionDigits:0});
+function formatoMiles(n){ return fmtNum.format(Math.round(Math.abs(n||0))); }
 function plata(n){ n = Math.round(n||0); return (n<0?'−':'') + fmt.format(Math.abs(n)).replace(/\s/g,''); }
 function plataSigno(n){ return (n>0?'+':'') + plata(n); }
 function h(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 function nuevoId(p){ return (p||'x') + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
-function leerMonto(s){ var d = String(s||'').replace(/[^\d]/g,''); return d ? Number(d) : 0; }
+function leerMonto(s){ var d = String(s||'').replace(/[^\d]/g,'').slice(0,12); return d ? Number(d) : 0; }
 function icono(n){ return '<svg class="i"><use href="#i-'+n+'"/></svg>'; }
 function color(c){ return 'var('+(c||'--a1')+')'; }
 function hoyISO(){ var d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); }
@@ -579,7 +585,10 @@ function abrir(titulo, cuerpo, alAbrir){
   if (!dlg.open) dlg.showModal();
   dlgIn.scrollTop = 0;
   if (alAbrir) alAbrir(dlgIn);
-  var f = dlgIn.querySelector('[autofocus]'); if (f) setTimeout(function(){ f.focus(); }, 60);
+  if (!window.matchMedia('(pointer: coarse)').matches){
+    var f = dlgIn.querySelector('[data-foco]');
+    if (f && document.activeElement !== f) f.focus();
+  }
 }
 function cerrar(){ if (dlg.open) dlg.close(); }
 dlg.addEventListener('click', function(e){ if (e.target===dlg) cerrar(); });
@@ -587,7 +596,8 @@ function val(n){ var el = dlgIn.querySelector('[name="'+n+'"]'); return el ? el.
 function error(msg){ var e = dlgIn.querySelector('.error'); if (e) e.textContent = msg; return false; }
 
 function campoMonto(nombre, etiqueta, valor, ayuda, foco){
-  return '<label class="campo dinero"><span>'+etiqueta+'</span><input name="'+nombre+'" inputmode="numeric" autocomplete="off" placeholder="$0" value="'+(valor?plata(valor):'')+'"'+(foco?' autofocus':'')+'>'+(ayuda?'<small>'+ayuda+'</small>':'')+'</label>';
+  var n = Math.round(Math.abs(valor||0));
+  return '<label class="campo dinero"><span>'+etiqueta+'</span><div class="dinero-in"><span aria-hidden="true">$</span><input type="text" name="'+nombre+'" inputmode="numeric" pattern="[0-9.]*" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="done" placeholder="0" value="'+(n?formatoMiles(n):'')+'"'+(foco?' data-foco':'')+'></div><small class="monto-vista"'+(n>=1000?'':' hidden')+'>'+(n>=1000?plata(n):'')+'</small>'+(ayuda?'<small>'+ayuda+'</small>':'')+'</label>';
 }
 function opcionesCuenta(sel, soloDebito){
   return cuentas().filter(function(c){ return !soloDebito || !esCredito(c); }).map(function(c){ return '<option value="'+c.id+'"'+(c.id===sel?' selected':'')+'>'+h(nombreCuenta(c))+'</option>'; }).join('');
@@ -626,7 +636,7 @@ function hojaRegistrar(modo, cid, extra){
       cuerpo = '<label class="campo"><span>Cuenta</span><select name="cuenta" data-cambio="mover">'+opcionesCuenta(cid,true)+'</select></label>'
         + '<div class="dos"><label class="campo"><span>Desde</span><select name="desde">'+opcionesOrigen(cid, extra.desde||'')+'</select></label>'
         + '<label class="campo"><span>Hacia</span><select name="hacia">'+opcionesOrigen(cid, extra.hacia !== undefined ? extra.hacia : ((aps[0]&&aps[0].id) || ''))+'<option value="__nuevo">+ Nuevo apartado…</option></select></label></div>'
-        + '<label class="campo" data-nuevo hidden><span>Nombre del nuevo apartado</span><input name="nuevoNombre" placeholder="Ej: Arriendo, permiso de circulación"></label>'
+        + '<label class="campo" data-nuevo hidden><span>Nombre del nuevo apartado</span><input name="nuevoNombre" placeholder="Ej: Arriendo, permiso de circulación" autocomplete="off"></label>'
         + campoMonto('monto','¿Cuánto?',0,'La plata no se mueve de tu banco: solo queda marcada para ese fin.', true);
     }
   } else {
@@ -688,7 +698,7 @@ function hojaMov(id){
   abrir(m.monto<0 ? 'Gasto' : 'Ingreso', '<form data-form="mov" data-id="'+m.id+'">'
     + (m.origen==='correo' ? '<div class="resultado" style="font-size:13px">Llegó por correo'+(m.tarjeta?' · tarjeta •••• '+h(m.tarjeta):'')+'. Revisa que esté bien y elige de dónde salió.</div>' : '')
     + campoMonto('monto', 'Monto', Math.abs(m.monto))
-    + '<label class="campo"><span>Descripción</span><input name="desc" value="'+h(m.descripcion)+'"></label>'
+    + '<label class="campo"><span>Descripción</span><input name="desc" value="'+h(m.descripcion)+'" autocomplete="off"></label>'
     + '<label class="campo"><span>Cuenta</span><select name="cuenta" data-cambio="origen">'+(c?'':'<option value="">Sin cuenta asignada</option>')+opcionesCuenta(m.cuentaId)+'</select></label>'
     + '<label class="campo"><span>'+(m.monto<0?'¿De dónde salió?':'¿A dónde fue?')+'</span><select name="origen">'+opcionesOrigen(m.cuentaId, m.apartadoId, m.monto<0?'De lo libre':'A lo libre')+'</select></label>'
     + '<div class="dos">'+(m.monto<0 && !esT ? '<label class="campo"><span>Categoría</span><select name="cat">'+opcionesCategoria(m.categoria)+'</select></label>' : '')
@@ -712,8 +722,8 @@ function hojaCuenta(id){
   var c = id ? cuenta(id) : null;
   var sal = c ? saldo(c) : 0;
   abrir(c ? 'Editar cuenta' : 'Nueva cuenta', '<form data-form="cuenta"'+(c?' data-id="'+c.id+'"':'')+'>'
-    + '<label class="campo"><span>Banco</span><input name="banco" list="bancos" value="'+h(c?c.banco:'')+'" placeholder="Ej: BancoEstado" autocomplete="off"'+(c?'':' autofocus')+'><datalist id="bancos">'+BANCOS.map(function(b){return '<option value="'+h(b)+'">';}).join('')+'</datalist></label>'
-    + '<div class="dos"><label class="campo"><span>Nombre</span><input name="nombre" value="'+h(c?c.nombre:'')+'" placeholder="Ej: CuentaRUT"></label>'
+    + '<label class="campo"><span>Banco</span><input name="banco" list="bancos" value="'+h(c?c.banco:'')+'" placeholder="Ej: BancoEstado" autocomplete="off"'+(c?'':' data-foco')+'><datalist id="bancos">'+BANCOS.map(function(b){return '<option value="'+h(b)+'">';}).join('')+'</datalist></label>'
+    + '<div class="dos"><label class="campo"><span>Nombre</span><input name="nombre" value="'+h(c?c.nombre:'')+'" placeholder="Ej: CuentaRUT" autocomplete="off"></label>'
     + '<label class="campo"><span>Tipo</span><select name="tipo" data-cambio="tipo">'+Object.keys(TIPOS).map(function(k){return '<option value="'+k+'"'+(c&&c.tipo===k?' selected':'')+'>'+TIPOS[k]+'</option>';}).join('')+'</select></label></div>'
     + campoMonto('saldo', esCredito(c) ? 'Deuda actual' : 'Saldo que tiene hoy', esCredito(c) ? -sal : sal, c ? 'Si no calza con tu banco, pon el saldo real y se anota un ajuste.' : 'Mira tu app del banco y copia el saldo disponible.')
     + '<p class="error"></p><div class="acciones">'+(c?'<button class="btn peligro" type="button" data-acc="cuenta-borrar" data-id="'+c.id+'">Borrar</button>':'')+'<button class="btn" type="submit">Guardar</button></div></form>');
@@ -752,7 +762,7 @@ function hojaApartado(id){
   abrir(a.nombre, '<form data-form="apartado" data-id="'+a.id+'">'
     + '<div class="resultado"><dl><dt>Disponible</dt><dd><b>'+plata(v)+'</b></dd><dt>Cuenta</dt><dd>'+h(nombreCuenta(cuenta(a.cuentaId)))+'</dd></dl></div>'
     + '<div class="dos" style="margin-bottom:16px"><button type="button" class="btn sec" data-acc="mover" data-id="'+a.cuentaId+'" data-hacia="'+a.id+'">'+icono('entra')+'Poner más</button><button type="button" class="btn sec" data-acc="mover" data-id="'+a.cuentaId+'" data-desde="'+a.id+'" data-hacia="">'+icono('menos')+'Liberar</button></div>'
-    + '<label class="campo"><span>Nombre</span><input name="nombre" value="'+h(a.nombre)+'"></label>'
+    + '<label class="campo"><span>Nombre</span><input name="nombre" value="'+h(a.nombre)+'" autocomplete="off"></label>'
     + campoMonto('meta','Meta (opcional)', Number(a.meta||0), 'Para ver cuánto te falta juntar.')
     + '<div class="campo"><span>Color</span><div class="colores">'+COLORES.map(function(c){return '<button type="button" data-color="'+c+'" class="'+(c===col?'on':'')+'" style="background:var('+c+')" aria-label="Color"></button>';}).join('')+'</div><input type="hidden" name="color" value="'+col+'"></div>'
     + '<p class="error"></p><div class="acciones"><button class="btn peligro" type="button" data-acc="apartado-borrar" data-id="'+a.id+'">Borrar</button><button class="btn" type="submit">Guardar</button></div></form>');
@@ -775,8 +785,8 @@ function hojaTarjeta(id){
   var t = id ? S.Tarjetas.find(function(x){return x.id===id;}) : null;
   if (!S.Cuentas.length){ aviso('Primero agrega una cuenta'); return hojaCuenta(); }
   abrir(t ? 'Editar tarjeta' : 'Nueva tarjeta', '<form data-form="tarjeta"'+(t?' data-id="'+t.id+'"':'')+'>'
-    + '<div class="dos"><label class="campo"><span>Últimos 4 dígitos</span><input name="u4" inputmode="numeric" maxlength="4" value="'+h(t?t.ultimos4:'')+'" placeholder="1234" autofocus></label>'
-    + '<label class="campo"><span>Nombre</span><input name="alias" value="'+h(t?t.alias:'')+'" placeholder="Ej: Débito"></label></div>'
+    + '<div class="dos"><label class="campo"><span>Últimos 4 dígitos</span><input type="text" name="u4" inputmode="numeric" pattern="[0-9]*" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" maxlength="4" value="'+h(t?t.ultimos4:'')+'" placeholder="1234" data-foco></label>'
+    + '<label class="campo"><span>Nombre</span><input name="alias" value="'+h(t?t.alias:'')+'" placeholder="Ej: Débito" autocomplete="off"></label></div>'
     + '<label class="campo"><span>Sus cargos van a</span><select name="cuenta">'+opcionesCuenta(t?t.cuentaId:'')+'</select><small>Una tarjeta de débito descuenta de su cuenta; una de crédito suma a su deuda.</small></label>'
     + '<p class="error"></p><div class="acciones">'+(t?'<button class="btn peligro" type="button" data-acc="tarjeta-borrar" data-id="'+t.id+'">Borrar</button>':'')+'<button class="btn" type="submit">Guardar</button></div></form>');
 }
@@ -788,7 +798,7 @@ function guardarTarjeta(id){
 
 /* --- Correos --- */
 function hojaProbar(){
-  abrir('Probar con un correo', '<form data-form="probar"><label class="campo"><span>Texto del correo</span><textarea name="texto" autofocus placeholder="Pega aquí el aviso de compra que te mandó el banco"></textarea></label><div id="res-prueba"></div><p class="error"></p><div class="acciones"><button class="btn full" type="submit">Ver qué entiende</button></div></form>');
+  abrir('Probar con un correo', '<form data-form="probar"><label class="campo"><span>Texto del correo</span><textarea name="texto" data-foco placeholder="Pega aquí el aviso de compra que te mandó el banco"></textarea></label><div id="res-prueba"></div><p class="error"></p><div class="acciones"><button class="btn full" type="submit">Ver qué entiende</button></div></form>');
 }
 function probar(){
   var t = val('texto'); if (!t.trim()) return error('Pega el texto de un correo.');
@@ -800,7 +810,7 @@ function probar(){
   }).catch(function(e){ error(String(e && e.message || e)); });
 }
 function hojaConsulta(){
-  abrir('Qué correos buscar', '<form data-form="consulta"><label class="campo"><span>Búsqueda de Gmail</span><textarea name="q" placeholder="'+h(S.consultaPorDefecto)+'">'+h(config('consultaCorreo'))+'</textarea><small>Usa la misma sintaxis del buscador de Gmail. Déjalo vacío para usar la búsqueda por defecto. Tip: busca en Gmail un aviso de compra, mira el remitente y agrégalo con from:.</small></label><div class="acciones"><button class="btn full" type="submit">Guardar</button></div></form>');
+  abrir('Qué correos buscar', '<form data-form="consulta"><label class="campo"><span>Búsqueda de Gmail</span><textarea name="q" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="'+h(S.consultaPorDefecto)+'">'+h(config('consultaCorreo'))+'</textarea><small>Usa la misma sintaxis del buscador de Gmail. Déjalo vacío para usar la búsqueda por defecto. Tip: busca en Gmail un aviso de compra, mira el remitente y agrégalo con from:.</small></label><div class="acciones"><button class="btn full" type="submit">Guardar</button></div></form>');
 }
 function escanear(){
   aviso('Revisando tus correos…', 6000);
@@ -891,14 +901,36 @@ document.addEventListener('change', function(e){
   if (k==='tr-desde'){ dlgIn.querySelector('[name="desdeAp"]').innerHTML = opcionesOrigen(t.value,'','De lo libre'); }
   if (k==='tr-hacia'){ dlgIn.querySelector('[name="haciaAp"]').innerHTML = opcionesOrigen(t.value,'','A lo libre'); }
   if (t.name==='hacia' && modo==='mover'){ dlgIn.querySelector('[data-nuevo]').hidden = t.value!=='__nuevo'; }
-  if (k==='tipo'){ var lbl = dlgIn.querySelector('[name="saldo"]').closest('label').querySelector('span'); lbl.textContent = t.value==='credito' ? 'Deuda actual' : 'Saldo que tiene hoy'; }
+  if (k==='tipo'){ var lbl = dlgIn.querySelector('[name="saldo"]').closest('label').querySelector(':scope > span'); lbl.textContent = t.value==='credito' ? 'Deuda actual' : 'Saldo que tiene hoy'; }
 });
 
-// Formato de plata mientras escribes
+// En móviles reescribir input.value mientras escribes rompe el teclado/cursor (IME);
+// solo limpiamos puntos al enfocar, mostramos vista previa al escribir y formateamos al salir.
+document.addEventListener('focusin', function(e){
+  var t = e.target;
+  if (t.closest && t.closest('.campo.dinero') && /[^\d]/.test(t.value)){
+    var n = leerMonto(t.value);
+    t.value = n ? String(n) : (/0/.test(t.value) ? '0' : '');
+  }
+});
 document.addEventListener('input', function(e){
   var t = e.target;
   if (t.closest && t.closest('.campo.dinero')){
-    var n = leerMonto(t.value); t.value = n ? plata(n) : '';
+    var v = t.closest('.campo.dinero').querySelector('.monto-vista');
+    if (v){
+      var n = leerMonto(t.value);
+      v.textContent = n >= 1000 ? plata(n) : '';
+      v.hidden = n < 1000;
+    }
+  }
+});
+document.addEventListener('focusout', function(e){
+  var t = e.target;
+  if (t.closest && t.closest('.campo.dinero')){
+    var raw = t.value.trim();
+    if (!raw){ t.value = ''; return; }
+    var n = leerMonto(raw);
+    t.value = n ? formatoMiles(n) : (/0/.test(raw) ? '0' : '');
   }
 });
 

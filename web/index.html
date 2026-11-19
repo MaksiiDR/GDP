@@ -579,8 +579,9 @@ function conectar(form){
 }
 
 /* ================= Hojas / formularios ================= */
-var dlg = document.getElementById('hoja'), dlgIn = document.getElementById('hoja-in');
+var dlg = document.getElementById('hoja'), dlgIn = document.getElementById('hoja-in'), modoHoja = '';
 function abrir(titulo, cuerpo, alAbrir){
+  modoHoja = '';
   dlgIn.innerHTML = '<div class="asa"></div><div class="hoja-cab"><h3>'+h(titulo)+'</h3><button class="cerrar" data-acc="cerrar" aria-label="Cerrar">'+icono('x')+'</button></div>' + cuerpo;
   if (!dlg.open) dlg.showModal();
   dlgIn.scrollTop = 0;
@@ -590,7 +591,7 @@ function abrir(titulo, cuerpo, alAbrir){
     if (f && document.activeElement !== f) f.focus();
   }
 }
-function cerrar(){ if (dlg.open) dlg.close(); }
+function cerrar(){ modoHoja = ''; if (dlg.open) dlg.close(); }
 dlg.addEventListener('click', function(e){ if (e.target===dlg) cerrar(); });
 function val(n){ var el = dlgIn.querySelector('[name="'+n+'"]'); return el ? el.value : ''; }
 function error(msg){ var e = dlgIn.querySelector('.error'); if (e) e.textContent = msg; return false; }
@@ -653,7 +654,7 @@ function hojaRegistrar(modo, cid, extra){
   }
   var titulos = {gasto:'Registrar gasto', ingreso:'Registrar ingreso', mover:'Apartar plata', transferir:'Transferir entre cuentas'};
   abrir(titulos[modo], seg + '<form data-form="'+modo+'">'+cuerpo+'<p class="error"></p><div class="acciones"><button class="btn full" type="submit">Guardar</button></div></form>');
-  dlgIn.dataset.modo = modo;
+  modoHoja = modo;
 }
 
 function guardarRegistrar(modo){
@@ -822,12 +823,12 @@ function escanear(){
 
 /* ================= Eventos ================= */
 document.addEventListener('click', function(e){
-  var t = e.target.closest('[data-tab],[data-acc],[data-filtro],[data-modo],[data-color],#fab');
+  var t = e.target.closest('[data-tab],[data-acc],[data-filtro],button[data-modo],[data-color],#fab');
   if (!t) return;
   if (t.id==='fab') return hojaRegistrar('gasto');
   if (t.dataset.tab){ vista = t.dataset.tab; render(); window.scrollTo(0,0); return; }
   if (t.dataset.filtro){ filtro = t.dataset.filtro; render(); return; }
-  if (t.dataset.modo){ return hojaRegistrar(t.dataset.modo, dlgIn.querySelector('[name="cuenta"],[name="desde"]') ? val('cuenta')||val('desde') : null); }
+  if (t.dataset.modo){ if (t.dataset.modo===modoHoja) return; return hojaRegistrar(t.dataset.modo, dlgIn.querySelector('[name="cuenta"],[name="desde"]') ? val('cuenta')||val('desde') : null); }
   if (t.dataset.color){ dlgIn.querySelectorAll('[data-color]').forEach(function(b){b.classList.toggle('on', b===t);}); dlgIn.querySelector('[name="color"]').value = t.dataset.color; return; }
   var id = t.dataset.id;
   switch (t.dataset.acc){
@@ -895,7 +896,7 @@ document.addEventListener('submit', function(e){
 document.addEventListener('change', function(e){
   var t = e.target, k = t.dataset && t.dataset.cambio;
   if (k==='defecto') return enviar([{op:'guardar',tabla:'Config',obj:{clave:'cuentaPorDefecto',valor:t.value}}], 'Guardado');
-  var modo = dlgIn.dataset.modo;
+  var modo = modoHoja;
   if (k==='origen'){ var o = dlgIn.querySelector('[name="origen"]'); o.innerHTML = opcionesOrigen(t.value,'', o.options[0] && /A lo/.test(o.options[0].text) ? 'A lo libre' : 'De lo libre'); }
   if (k==='mover'){ hojaRegistrar('mover', t.value); }
   if (k==='tr-desde'){ dlgIn.querySelector('[name="desdeAp"]').innerHTML = opcionesOrigen(t.value,'','De lo libre'); }

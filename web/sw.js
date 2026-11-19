@@ -1,6 +1,6 @@
 // Mi Plata: guarda la app para que abra rápido y sin conexión.
 // Los datos (llamadas a Apps Script) nunca se guardan aquí.
-var VERSION = 'miplata-v2';
+var VERSION = 'miplata-v3';
 var BASE = ['./', './index.html', './Parser.js', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', function (e) {

@@ -364,7 +364,7 @@ var demo = (function(){
       EJEMPLOS.forEach(function(e){
         if (vistos[e.id]) return;
         var p = parsearCorreo_(e.asunto+'. '+e.cuerpo, new Date());
-        if (p){ db.Movimientos.push(armarMovimientoDesdeCorreo_(p, db, e.id)); nuevos++; } else no++;
+        if (p){ armarMovimientosDesdeCorreo_(p, db, e.id).forEach(function(m){ db.Movimientos.push(m); }); nuevos++; } else no++;
         db.Correos.push({id:e.id, fecha:new Date().toISOString(), asunto:e.asunto, estado:p?'registrado':'no entendido', extracto:p?'':e.cuerpo});
       });
       guardar(); return {nuevos:nuevos, noEntendidos:no, estado:estado()};

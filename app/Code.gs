@@ -214,6 +214,7 @@ function escanearCorreos() {
   try {
     var ss = libro_();
     var estado = {
+      Cuentas: leer_(ss, 'Cuentas'),
       Tarjetas: leer_(ss, 'Tarjetas'),
       Config: leer_(ss, 'Config'),
       Movimientos: leer_(ss, 'Movimientos')
@@ -232,9 +233,11 @@ function escanearCorreos() {
         var cuerpo = msg.getBody() || msg.getPlainBody();
         var p = parsearCorreo_(asunto + '. ' + cuerpo, msg.getDate());
         if (p) {
-          var mov = armarMovimientoDesdeCorreo_(p, estado, id);
-          guardarEn_(ss, 'Movimientos', mov);
-          estado.Movimientos.push(mov);
+          var movs = armarMovimientosDesdeCorreo_(p, estado, id);
+          movs.forEach(function (mov) {
+            guardarEn_(ss, 'Movimientos', mov);
+            estado.Movimientos.push(mov);
+          });
           nuevos++;
         } else {
           noEntendidos++;

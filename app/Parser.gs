@@ -6,7 +6,8 @@
 var PALABRAS_INGRESO = /(recibiste|te transfiri[oó]|abono|dep[oó]sito recibido|transferencia recibida|has recibido|te han transferido|devoluci[oó]n|anulaci[oó]n)/i;
 var PALABRAS_MONTO = /(compra|monto|cargo|por un total|total|pago|transferencia|transferiste|giro|abono|recibiste|valor|importe|por)\W{0,25}$/i;
 var PALABRAS_NO_MONTO = /(cupo|disponible|saldo|l[ií]mite|deuda total|utilizado)\W{0,30}$/i;
-var PALABRAS_IGNORAR = /(comprobante\s+(?:de\s+)?pago\s+(?:de\s+)?tarjeta\s+de\s+cr[eé]dito|pago\s+de\s+tu\s+tarjeta\s+de\s+cr[eé]dito)/i;
+var PALABRAS_SALIDA = /(realizaste una transferencia|has realizado el siguiente pago|enviamos tu transferencia)/i;
+var PALABRAS_PAGO_TARJETA = /(comprobante\s+(?:de\s+)?pago\s+(?:de\s+)?tarjeta\s+de\s+cr[eé]dito|pago\s+de\s+tu\s+tarjeta\s+de\s+cr[eé]dito)/i;
 
 function normalizarTexto_(texto) {
   var acentos = { a: 'á', e: 'é', i: 'í', o: 'ó', u: 'ú', A: 'Á', E: 'É', I: 'Í', O: 'Ó', U: 'Ú' };
@@ -22,6 +23,7 @@ function normalizarTexto_(texto) {
     .replace(/&#36;/g, '$')
     .replace(/&([aeiouAEIOU])acute;/g, function (_, v) { return acentos[v]; })
     .replace(/&ntilde;/g, 'ñ').replace(/&Ntilde;/g, 'Ñ')
+    .replace(/&deg;/gi, '°')
     .replace(/[ \t]*\r?\n[ \t]*/g, ' ')
     .replace(/[ \t]{2,}\*/g, ' *')
     // 3+ espacios seguidos separan campos (ej: "NETFLIX.COM.     LAS CONDES     CL")
@@ -163,10 +165,20 @@ function categoriaSugerida_(comercio, movimientosPrevios) {
 /** Devuelve {monto, ultimos4, comercio, fecha, esIngreso} o null si no parece un cargo. */
 function parsearCorreo_(texto, fechaCorreo) {
   var t = normalizarTexto_(texto);
-  if (PALABRAS_IGNORAR.test(t)) return null;
   var monto = buscarMonto_(t);
   if (!monto) return null;
-  var esIngreso = PALABRAS_INGRESO.test(t);
+  if (PALABRAS_PAGO_TARJETA.test(t)) {
+    return {
+      monto: monto,
+      ultimos4: buscarTarjeta_(t),
+      comercio: 'Pago tarjeta de crédito',
+      fecha: buscarFecha_(t, fechaCorreo),
+      esIngreso: false,
+      esPagoTarjeta: true
+    };
+  }
+  var tIng = t.replace(/fecha\s+de\s+abono|recibiste\s+este\s+e-?mail/gi, '');
+  var esIngreso = !PALABRAS_SALIDA.test(t) && PALABRAS_INGRESO.test(tIng);
   var comercio = buscarComercio_(t);
   return {
     monto: esIngreso ? monto : -monto,
@@ -203,4 +215,80 @@ function armarMovimientoDesdeCorreo_(p, estado, ref) {
     revisado: 'no',
     tarjeta: p.ultimos4 || ''
   };
+}
+
+/** Devuelve lista de movimientos (1 normal, o 2 ligados si es pago de tarjeta de crédito desde cuenta corriente). */
+function armarMovimientosDesdeCorreo_(p, estado, ref) {
+  if (!p.esPagoTarjeta) return [armarMovimientoDesdeCorreo_(p, estado, ref)];
+
+  var destinoId = '';
+  if (p.ultimos4) {
+    for (var i = 0; i < estado.Tarjetas.length; i++) {
+      if (String(estado.Tarjetas[i].ultimos4) === p.ultimos4) { destinoId = estado.Tarjetas[i].cuentaId; break; }
+    }
+  }
+  var cuentas = estado.Cuentas || [];
+  var destino = null;
+  for (var d = 0; d < cuentas.length; d++) {
+    if (cuentas[d].id === destinoId) { destino = cuentas[d]; break; }
+  }
+
+  var origenId = '';
+  for (var k = 0; k < estado.Config.length; k++) {
+    if (estado.Config[k].clave === 'cuentaPorDefecto') origenId = estado.Config[k].valor || '';
+  }
+  if (!origenId || origenId === destinoId) {
+    origenId = '';
+    for (var j = 0; j < cuentas.length; j++) {
+      var c = cuentas[j];
+      if (c.id === destinoId || c.tipo === 'credito') continue;
+      if (destino && c.banco === destino.banco && c.tipo === 'corriente') { origenId = c.id; break; }
+      if (!origenId && c.tipo === 'corriente') origenId = c.id;
+    }
+    if (!origenId) {
+      for (var j2 = 0; j2 < cuentas.length; j2++) {
+        if (cuentas[j2].id !== destinoId && cuentas[j2].tipo !== 'credito') { origenId = cuentas[j2].id; break; }
+      }
+    }
+  }
+  var origen = null;
+  for (var o = 0; o < cuentas.length; o++) {
+    if (cuentas[o].id === origenId) { origen = cuentas[o]; break; }
+  }
+
+  var baseId = 'm' + new Date().getTime().toString(36) + Math.random().toString(36).slice(2, 6);
+  var parRef = 'pago-' + (ref || baseId);
+  var nomDest = destino ? destino.nombre : ('tarjeta ' + (p.ultimos4 || 'crédito'));
+  var nomOrig = origen ? origen.nombre : 'cuenta corriente';
+  var monto = Math.abs(p.monto);
+  var movs = [];
+  if (origenId) {
+    movs.push({
+      id: baseId + 'a',
+      fecha: p.fecha,
+      cuentaId: origenId,
+      monto: -monto,
+      descripcion: 'Pago tarjeta → ' + nomDest,
+      categoria: 'Transferencia',
+      apartadoId: '',
+      origen: 'correo',
+      ref: parRef,
+      revisado: 'no',
+      tarjeta: ''
+    });
+  }
+  movs.push({
+    id: baseId + 'b',
+    fecha: p.fecha,
+    cuentaId: destinoId,
+    monto: monto,
+    descripcion: 'Pago tarjeta ← ' + nomOrig,
+    categoria: 'Transferencia',
+    apartadoId: '',
+    origen: 'correo',
+    ref: parRef,
+    revisado: 'no',
+    tarjeta: p.ultimos4 || ''
+  });
+  return movs;
 }
